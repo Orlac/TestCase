@@ -10,7 +10,11 @@ final class DataBase
     {
         sleep(1);
         $this->isConnected = true;
-        return 'connected';
+        /**
+         * Fatal error: Uncaught TypeError: DataBase::connect(): Return value must be of type bool, string returned in /var/www/TestCase/Program.php:14
+         */
+        //return 'connected';
+        return true;
     }
 
     public function random()
@@ -53,41 +57,70 @@ final class DataBase
 
 class DataBaseHelper
 {
-    public function connectAndFetch($id)
+    private static ?DataBaseHelper $instance;
+
+    private function  __construct(protected readonly DataBase $dataBase)
     {
-        $dataBase = new DataBase();
-        $dataBase->connect();
-        $result = $dataBase->fetch($id);
-        return $result;
+        $this->dataBase->connect();
     }
 
-    public function connectAndInsert($id)
+    public static function instance(DataBase $dataBase = new DataBase()): static
     {
-        $dataBase = new DataBase();
-        $dataBase->connect();
-        $result = $dataBase->insert($id);
-        return $result;
+        return self::$instance ?? (self::$instance = new static($dataBase));
+    }
+
+    public function fetch(int $id): string
+    {
+        return (string)$this->exec(function () use ($id) {
+            return $this->dataBase->fetch($id);
+        });
+    }
+
+    public function batchInsert(array $batch): string
+    {
+        return (string)$this->exec(function () use ($batch) {
+            return $this->dataBase->batchInsert($batch);
+        });
+    }
+
+    protected function exec(Callable $fn): mixed
+    {
+        $count = 1;
+        while (true) {
+            try {
+                return call_user_func($fn);
+            } catch (Exception $exception) {
+                $count++;
+                echo $exception->getMessage() . PHP_EOL;
+                print(sprintf('try connect %s', $count)) . PHP_EOL;
+                $this->dataBase->connect();
+            }
+        }
     }
 }
 
-function step1($dataToFetch)
+/**
+ * @param int[] $dataToFetch
+ * @return void
+ */
+function step1(array $dataToFetch): void
 {
-    $dataBaseHelper = new DataBaseHelper();
+    $dataBaseHelper = DataBaseHelper::instance();
 
-    for ($i = 1; $i < count($dataToFetch); $i++) {
-        print($dataBaseHelper->connectAndFetch($dataToFetch[$i]));
+    for ($i = 0; $i < count($dataToFetch); $i++) {
+        print($dataBaseHelper->fetch($dataToFetch[$i]));
         print(PHP_EOL);
     }
 }
 
-function step2($dataToInsert)
+/**
+ * @param int[] $dataToInsert
+ * @return void
+ */
+function step2(array $dataToInsert): void
 {
-    $dataBaseHelper = new DataBaseHelper();
-
-    for ($i = 0; $i <= count($dataToInsert); $i++) {
-        print($dataBaseHelper->connectAndInsert($dataToInsert[$i]));
-        print(PHP_EOL);
-    }
+    print(DataBaseHelper::instance()->batchInsert($dataToInsert));
+    print(PHP_EOL);
 }
 
 //==============Не редактировать
